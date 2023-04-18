@@ -1,38 +1,69 @@
-from imageai.Detection import ObjectDetection
 import cv2
-import os
+import torch
 
-def get_center(box_points):
-    return (int((box_points[0] + box_points[2]) / 2), int((box_points[1] + box_points[3]) / 2))
+model = torch.hub.load('ultralytics/yolov5','yolov5s',pretrained=True)
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+model.to(device)
+print(model.names)
 
-def draw_points(frame, points):
-    for point in points:
-        frame = cv2.rectangle(frame, point, (point[0] + 2, point[1] + 2), (0, 255, 0), 1)
-    return frame
+def class_to_label(x):
+        """
+        For a given label value, return corresponding string label.
+        :param x: numeric label
+        :return: corresponding string label
+        """
+        return model.names[int(x)]
 
-execution_path = os.getcwd()
+def score_frame(frame):
+        """
+        Takes a single frame as input, and scores the frame using yolo5 model.
+        :param frame: input frame in numpy/list/tuple format.
+        :return: Labels and Coordinates of objects detected by model in the frame.
+        """
+        frame = [frame]
+        results = model(frame)
+        labels, cord = results.xyxyn[0][:, -1].numpy(), results.xyxyn[0][:, :-1].numpy()
+        return labels, cord
 
-car_detector = ObjectDetection()
-car_detector.setModelTypeAsYOLOv3()
-car_detector.setModelPath(os.path.join(execution_path, "objdet_model/yolov3.pt"))
-car_detector.loadModel()
+def plot_boxes(results, frame):
+        """
+        Takes a frame and its results as input, and plots the bounding boxes and label on to the frame.
+        :param results: contains labels and coordinates predicted by model on the given frame.
+        :param frame: Frame which has been scored.
+        :return: Frame with bounding boxes and labels ploted on it.
+        """
+        labels, cord = results
+        n = len(labels)
+        x_shape, y_shape = frame.shape[1], frame.shape[0]
+        for i in range(n):
+            row = cord[i]
+            if row[4] >= 0.2:
+                x1, y1, x2, y2 = int(row[0]*x_shape), int(row[1]*y_shape), int(row[2]*x_shape), int(row[3]*y_shape)
+                bot_center = (int((x1 + x2) / 2), int((y1 + y2) / 2 + (y2 - y1) / 4))
+                bgr = (0, 255, 0)
+                cv2.rectangle(frame, (x1, y1), (x2, y2), bgr, 1)
+                cv2.rectangle(frame, bot_center, (bot_center[0] + 1, bot_center[1] + 1), (0, 255, 0), 1)
+                cv2.putText(frame, model.names[int(labels[i])], (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 0.5, bgr, 1)
 
-custom = car_detector.CustomObjects(bicycle=True, car=True, bus=True, truck=True)
-
+        return frame
+    
 video = cv2.VideoCapture('videos/parking_lot_1.mp4')
+count = 0
 
 while (video.isOpened()):
     ret, frame = video.read()
 
     if ret == True:
-        returned_image, detections = car_detector.detectObjectsFromImage(custom_objects=custom, input_image=frame, output_type="array", minimum_percentage_probability=30)
-        center_list = [get_center(obj['box_points']) for obj in detections]
-        returned_image = draw_points(returned_image, center_list)
-        cv2.imshow('Video', returned_image)
+        if count % 4 == 0:
+            results = score_frame(frame) # Score the Frame
+        frame = plot_boxes(results, frame) # Plot the boxes.
+
+        cv2.imshow('Video', frame)
 
         key = cv2.waitKey(20)
         if key == 27:
             break
+        count = count + 1
     else:
         break
 
