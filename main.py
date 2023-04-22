@@ -3,11 +3,8 @@ import torch
 import os
 import numpy as np
 
-model = torch.hub.load('ultralytics/yolov5','yolov5s', pretrained=True)
-# model = torch.hub.load('ultralytics/yolov5','yolov5s', pretrained=False)
-# model.load_state_dict(torch.load('best.pt'))
-# model_name='best.pt'
-# model = torch.hub.load(os.getcwd(), 'custom', source = 'local', path = model_name, force_reload = True)
+model = torch.hub.load('ultralytics/yolov5','yolov5n', pretrained=True)
+# model = torch.hub.load('ultralytics/yolov5', 'custom', path='best.pt')
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model.to(device)
 print(model.names)
@@ -27,10 +24,6 @@ def score_frame(frame):
         :return: Labels and Coordinates of objects detected by model in the frame.
         """
         frame = [frame]
-        results = model(frame)
-        
-        # frame = torch.tensor(frame).permute(2, 0, 1)
-        # print(frame.shape)
         results = model(frame)
         labels, cord = results.xyxyn[0][:, -1].numpy(), results.xyxyn[0][:, :-1].numpy()
         return labels, cord
